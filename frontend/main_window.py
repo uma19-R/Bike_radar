@@ -1,7 +1,7 @@
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QRadioButton, QGroupBox,
-    QLabel, QDoubleSpinBox, QSizePolicy, QFileDialog
+    QLabel, QDoubleSpinBox, QSpinBox, QSizePolicy, QFileDialog
 )
 from PySide6.QtCore import QTimer
 import pyqtgraph as pg
@@ -49,6 +49,22 @@ class MainWindow(QWidget):
 
         grid_box.setLayout(grid_layout)
         left_panel.addWidget(grid_box)
+
+        # -------- COM PORT SETTINGS --------
+        port_box = QGroupBox("COM Port Settings")
+        port_layout = QVBoxLayout()
+
+        self.config_port = self._spin_port("Config Port (COM)", port_layout, 19)
+        self.data_port = self._spin_port("Data Port (COM)", port_layout, 20)
+
+        port_box.setLayout(port_layout)
+        left_panel.addWidget(port_box)
+
+        # -------- START RADAR --------
+        self.start_radar_btn = QPushButton("Start Radar")
+        self.start_radar_btn.setFixedHeight(30)
+        self.start_radar_btn.clicked.connect(self.on_start_radar)
+        left_panel.addWidget(self.start_radar_btn)
 
         # -------- CREATE GRID --------
         self.create_btn = QPushButton("Create Grid")
@@ -144,6 +160,21 @@ class MainWindow(QWidget):
         layout.addLayout(row)
         return spin
 
+    def _spin_port(self, label, layout, default):
+        """Helper to create integer spinbox for COM port numbers."""
+        row = QHBoxLayout()
+        row.addWidget(QLabel(label))
+
+        spin = QSpinBox()
+        spin.setRange(1, 256)
+        spin.setValue(default)
+        spin.setFixedWidth(110)
+
+        row.addStretch(1)
+        row.addWidget(spin)
+        layout.addLayout(row)
+        return spin
+
     # -------------------------------------------------
     def on_create_grid(self):
         cfg = {
@@ -155,6 +186,27 @@ class MainWindow(QWidget):
             "dy": self.dy.value(),
         }
         self.backend.create_grid(cfg)
+
+    def on_start_radar(self):
+        """Start radar configuration and data reading with selected COM ports."""
+        from pathlib import Path
+        
+        config_port_num = self.config_port.value()
+        data_port_num = self.data_port.value()
+        CONFIG_PORT = f"COM{config_port_num}"
+        DATA_PORT = f"COM{data_port_num}"
+        CONFIG_FILE = Path("AOP_6m_default.cfg")
+
+        print(f"Starting radar with Config Port: {CONFIG_PORT}, Data Port: {DATA_PORT}")
+        
+        # Send configuration
+        self.backend.send_config(CONFIG_PORT, CONFIG_FILE)
+
+        # Start reading radar data
+        self.backend.start_reading(DATA_PORT)
+
+        self.start_radar_btn.setEnabled(False)
+        self.start_radar_btn.setText("Radar Started")
 
     # -------------------------------------------------
     # GRID INITIALIZATION (ON CREATE GRID)
@@ -293,21 +345,3 @@ class MainWindow(QWidget):
         exporter = pg_exporters.ImageExporter(self.plot.getPlotItem())
         exporter.parameters()['width'] = 1920
         exporter.export(file_path)
-    # -------------------------------------------------
-    # UPDATE RADAR POINTS
-    # -------------------------------------------------
-    def update_radar_points(self, points):
-        """Update scatter plot with new radar points."""
-        print(f"points {points}")
-        if not points:
-            self.scatter.setData([], [])
-            return
-
-        # Extract real-world coordinates for plotting
-        x_coords = [p['y'] for p in points]
-        y_coords = [p['x'] for p in points]
-        
-        # Update scatter plot
-        self.scatter.setData(x_coords, y_coords)
-        
-        print(f"Displaying {len(points)} radar points on grid")
